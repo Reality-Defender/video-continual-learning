@@ -74,7 +74,7 @@ def main():
         ewc_lambda=1,
     )
 
-    # initialize importance
+    # initialize lmbda
     strategy.experience = test_stream[1]
     strategy.manual_importance(strategy)
 

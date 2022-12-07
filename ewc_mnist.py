@@ -160,7 +160,7 @@ if __name__ == "__main__":
         "--decay_factor",
         type=float,
         default=0.1,
-        help="Decay factor for importance " "when ewc_mode is online.",
+        help="Decay factor for importance_method " "when ewc_mode is online.",
     )
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate.")
     parser.add_argument("--hs", type=int, default=256, help="MLP hidden size.")

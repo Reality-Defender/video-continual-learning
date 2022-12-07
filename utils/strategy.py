@@ -41,7 +41,7 @@ class EWCPretrained(EWC):
                                             **base_kwargs)
 
     def manual_importance(self, strategy):
-        # compute importance
+        # compute importance_method
         self.plugins[0].after_training_exp(strategy=strategy)
 
         # update the counter
@@ -84,7 +84,7 @@ class EWC(SupervisedTemplate):
                previous tasks. `onlineweightedsum` to keep a single penalty
                summed with a decay factor over all previous tasks.
         :param decay_factor: used only if mode is `onlineweightedsum`.
-               It specify the decay term of the importance matrix.
+               It specify the decay term of the importance_method matrix.
         :param keep_importance_data: if True, keep in memory both parameter
                 values and importances for all previous task, for all modes.
                 If False, keep only last parameter values and importances.
