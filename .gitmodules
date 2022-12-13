@@ -1,0 +1,3 @@
+[submodule "wang"]
+	path = wang
+	url = git@github.com:PeterWang512/CNNDetection.git
