@@ -1,14 +1,13 @@
 import os
-from utils import architectures
-from utils.data import stable_diffusion_scenario, GanDataset, SDDataset
+from mandelli.utils import architectures
+from cl_utils.data import GanDataset, SDDataset
 import albumentations as A
 import albumentations.pytorch as Ap
 from torch.optim import Adam, SGD
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
-from multiprocessing import cpu_count
 from collections import OrderedDict
-from utils.ewc import EWC, test, ewc_train
+from cl_utils.ewc import EWC, test, ewc_train
 from torch.utils.tensorboard import SummaryWriter
 import torch
 import argparse
@@ -44,7 +43,7 @@ def main():
     num_workers = 10  # cpu_count()
     epochs = 500
     patience = 50
-    batch_size = 256
+    batch_size = 128
 
     tensorboard_logdir = 'tb_data'
     suffix = f'{optimizer_name}_{lr}_{lmbda}'
@@ -118,22 +117,22 @@ def main():
     ewc = EWC(model=net, dataloader=test_gan_dataloader, lmbda=lmbda, importance_method=importance_method)
 
     # initial testing
-    acc_gan, _ = test(model=net,
-                      data_loader=test_gan_dataloader,
-                      dataset_name='GAN',
-                      criterion=criterion,
-                      ewc=ewc,
-                      phase='test',
-                      lr=optimizer.param_groups[0]['lr'])
-    print(f'Accuracy on GAN: {acc_gan: .3f}')
-    acc_sd, _ = test(model=net,
-                     data_loader=sd_test_dataloader,
-                     dataset_name='SD',
-                     criterion=criterion,
-                     ewc=ewc,
-                     phase='test',
-                     lr=optimizer.param_groups[0]['lr'])
-    print(f'Accuracy on SD: {acc_sd: .3f}')
+    # acc_gan, _ = test(model=net,
+    #                   data_loader=test_gan_dataloader,
+    #                   dataset_name='GAN',
+    #                   criterion=criterion,
+    #                   ewc=ewc,
+    #                   phase='test',
+    #                   lr=optimizer.param_groups[0]['lr'])
+    # print(f'Accuracy on GAN: {acc_gan: .3f}')
+    # acc_sd, _ = test(model=net,
+    #                  data_loader=sd_test_dataloader,
+    #                  dataset_name='SD',
+    #                  criterion=criterion,
+    #                  ewc=ewc,
+    #                  phase='test',
+    #                  lr=optimizer.param_groups[0]['lr'])
+    # print(f'Accuracy on SD: {acc_sd: .3f}')
 
     # train
     best_val_loss = 10000

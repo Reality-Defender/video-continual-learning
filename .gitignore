@@ -1,4 +1,6 @@
 __MACOSX/
-.idea/
+../.idea/
 .ipynb_checkpoints/
 .DS_Store
+
+.idea/

@@ -1,4 +1,4 @@
-# Stealed from https://github.com/moskomule/ewc.pytorch/blob/master/utils.py
+# Stealed from https://github.com/moskomule/ewc.pytorch/blob/master/utils.py and re-elaborated
 
 from copy import deepcopy
 
@@ -10,12 +10,6 @@ import torch.utils.data
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import cpu_count
-
-
-# def variable(t: torch.Tensor, use_cuda=True, **kwargs):
-#     if torch.cuda.is_available() and use_cuda:
-#         t = t.cuda()
-#     return Variable(t, **kwargs)
 
 
 class EWC(object):
@@ -53,7 +47,7 @@ class EWC(object):
 
         self.model.eval()
         for batch_input in tqdm(self.dataloader, total=len(self.dataloader), leave=False,
-                                desc=f'Computing {self.importance_method}'):
+                                desc=f'Computing {self.importance_method} importance'):
             input = batch_input[0].cuda()
             label = batch_input[1].cuda()
             self.model.zero_grad()

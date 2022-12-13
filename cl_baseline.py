@@ -1,15 +1,12 @@
-import os
 from utils import architectures
-from utils.data import stable_diffusion_scenario
+from cl_utils.data import stable_diffusion_scenario
 # from avalanche.training.supervised import EWC
-from utils.strategy import EWCPretrained
+from cl_utils.strategy import EWCPretrained
 from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, loss_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger
 from avalanche.training.plugins import EvaluationPlugin
-import albumentations as A
-import albumentations.pytorch as Ap
 import torchvision.transforms as transforms
-from torch.optim import Adam, SGD
+from torch.optim import SGD
 from collections import OrderedDict
 import torch
 
