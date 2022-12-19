@@ -16,9 +16,12 @@ class EWC(object):
     def __init__(self, model: nn.Module, dataloader, lmbda, importance_method: str = 'fisher'):
 
         self.model = model
-        self.dataloader = DataLoader(dataloader.dataset, batch_size=1, shuffle=False, num_workers=10)
+        self.dataloader = DataLoader(dataloader.dataset, batch_size=1, shuffle=False, num_workers=0)
         # self.dataloader = dataloader
-        self.criterion = nn.CrossEntropyLoss()
+        if 'ResNet' in self.model.__class__.__name__:
+            self.criterion = nn.BCEWithLogitsLoss()
+        else:
+            self.criterion = nn.CrossEntropyLoss()
 
         self.importance_method = importance_method
         self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
@@ -50,13 +53,18 @@ class EWC(object):
                                 desc=f'Computing {self.importance_method} importance'):
             input = batch_input[0].cuda()
             label = batch_input[1].cuda()
+            if 'ResNet' in self.model.__class__.__name__:
+                label = label.unsqueeze(dim=0).float()
             self.model.zero_grad()
             output = self.model(input)
 
             if self.importance_method in ['fisher', 'fisher_complete']:
                 loss = self.criterion(output, label)
             elif self.importance_method == 'mas':
-                loss = torch.nn.functional.softmax(output, dim=1).square().sum()
+                if 'ResNet' in self.model.__class__.__name__:
+                    loss = output.sigmoid()
+                else:
+                    loss = torch.nn.functional.softmax(output, dim=1).square().sum()
 
             loss.backward()
 
@@ -95,6 +103,16 @@ class EWC(object):
 
         return loss * self.lmbda
 
+    @staticmethod
+    def _convert_to_multiclass(x: torch.Tensor) -> torch.Tensor:
+        # normalize
+        s = x.sigmoid()
+
+        multiclass = torch.Tensor([[1 - s, s]]).requires_grad_() if s <= 0.5 \
+            else torch.Tensor([[s, 1 - s]]).requires_grad_()
+
+        return multiclass.to(x.device)
+
 
 def ewc_train(model: nn.Module, optimizer: torch.optim, criterion, data_loader: torch.utils.data.DataLoader,
               ewc: EWC, epoch: int, tb: SummaryWriter, global_step: int, ewc_correction: bool):
@@ -105,6 +123,8 @@ def ewc_train(model: nn.Module, optimizer: torch.optim, criterion, data_loader: 
     for batch_data in tqdm(data_loader, total=len(data_loader), desc=f'Training epoch {epoch}', leave=False):
         input = batch_data[0].cuda()
         target = batch_data[1].cuda()
+        if 'ResNet' in model.__class__.__name__:
+            target = target.unsqueeze(dim=1).float()
         optimizer.zero_grad()
         output = model(input)
         ce = criterion(output, target)
@@ -129,19 +149,26 @@ def ewc_train(model: nn.Module, optimizer: torch.optim, criterion, data_loader: 
 
 
 @torch.no_grad()
-def test(model: nn.Module, data_loader: torch.utils.data.DataLoader, dataset_name: str, criterion, ewc, lr: float, phase: str,
+def test(model: nn.Module, data_loader: torch.utils.data.DataLoader, dataset_name: str, criterion, ewc, lr: float,
+         phase: str,
          tb: SummaryWriter = None, global_step: int = 0):
     model.eval()
     correct = 0
     loss = 0
-    for batch_data in tqdm(data_loader, desc=f'{phase}', total=len(data_loader), leave=False):
+    for batch_data in tqdm(data_loader, desc=f'{phase} on {dataset_name}', total=len(data_loader), leave=False):
         input = batch_data[0].cuda()
         target = batch_data[1].cuda()
+        if 'ResNet' in model.__class__.__name__:
+            target = target.unsqueeze(dim=1).float()
         output = model(input)
         ce = criterion(output, target)
         penalty = ewc.penalty(model, lr)
         loss += ce + penalty
-        correct += (F.softmax(output, dim=1).max(dim=1)[1] == target).data.sum()
+
+        if 'ResNet' in model.__class__.__name__:
+            correct += ((output.sigmoid() > 0.5).int() == target).sum()
+        else:
+            correct += (F.softmax(output, dim=1).max(dim=1)[1] == target).data.sum()
 
     total_loss = loss.item() / len(data_loader)
     acc = correct / len(data_loader.dataset)

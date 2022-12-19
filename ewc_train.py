@@ -8,6 +8,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from collections import OrderedDict
 from cl_utils.ewc import EWC, test, ewc_train
+from wang.networks.resnet import resnet50
+import torchvision.transforms as transforms
+
 from torch.utils.tensorboard import SummaryWriter
 import torch
 import argparse
@@ -25,6 +28,7 @@ def main():
     parser.add_argument('--importance_method', type=str,
                         choices=['fisher', 'fisher_complete', 'mas'], default='fisher')
     parser.add_argument('--model', type=str, required=False)
+    parser.add_argument('--batch', type=int, default=128)
 
     args = parser.parse_args()
 
@@ -35,18 +39,23 @@ def main():
     finetuning = args.finetuning
     importance_method = args.importance_method
     model_name = args.model
+    batch_size = args.batch
 
-    model_letter = model_name if model_name is not None else 'A'
     checkpoint_dir = 'weigths'
-    checkpoint_path = os.path.join(checkpoint_dir, f'method_{model_letter}.pth')
+    if 'wang' in model_name:
+        model_letter = model_name
+        checkpoint_path = os.path.join(checkpoint_dir, f'{model_name}.pth')
+    else:
+        model_letter = model_name if model_name is not None else 'A'
+        checkpoint_path = os.path.join(checkpoint_dir, f'method_{model_letter}.pth')
+
     device = 'cuda'
     num_workers = 10  # cpu_count()
-    epochs = 500
-    patience = 50
-    batch_size = 128
+    epochs = 200
+    patience = 20
 
     tensorboard_logdir = 'tb_data'
-    suffix = f'{optimizer_name}_{lr}_{lmbda}'
+    suffix = f'{optimizer_name}_{lr}_{lmbda}_{batch_size}'
     if ewc_correction:
         suffix += '_correct'
     if finetuning:
@@ -61,32 +70,59 @@ def main():
 
     tb = SummaryWriter(log_dir=os.path.join(tensorboard_logdir, suffix))
 
-    network_class = getattr(architectures, 'EfficientNetB4')
-    net = network_class(n_classes=2, pretrained=False).eval().to(device)
-    print(f'Loading model {model_letter}...')
-    state_tmp = torch.load(checkpoint_path, map_location='cpu')
+    if 'wang' in model_name:
+        # Load model
+        net = resnet50(num_classes=1)
+        state_dict = torch.load('wang/weights/blur_jpg_prob0.5.pth', map_location='cpu')
+        net.load_state_dict(state_dict['model'])
+        net.eval()
+        net.cuda()
 
-    if 'net' not in state_tmp.keys():
-        state = OrderedDict({'net': OrderedDict()})
-        [state['net'].update({'model.{}'.format(k): v}) for k, v in state_tmp.items()]
+        # Transform
+        trans_init = []
+        # if (opt.crop is not None):
+        #     trans_init = [transforms.CenterCrop(opt.crop), ]
+        #     print('Cropping to [%i]' % opt.crop)
+        # else:
+        #     print('Not cropping')
+        train_trans = transforms.Compose(trans_init + [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
     else:
-        state = state_tmp
-    incomp_keys = net.load_state_dict(state['net'], strict=True)
-    print(incomp_keys)
-    print('Model loaded!\n')
+        network_class = getattr(architectures, 'EfficientNetB4')
+        net = network_class(n_classes=2, pretrained=False).eval().to(device)
+        print(f'Loading model {model_letter}...')
+        state_tmp = torch.load(checkpoint_path, map_location='cpu')
+
+        if 'net' not in state_tmp.keys():
+            state = OrderedDict({'net': OrderedDict()})
+            [state['net'].update({'model.{}'.format(k): v}) for k, v in state_tmp.items()]
+        else:
+            state = state_tmp
+        incomp_keys = net.load_state_dict(state['net'], strict=True)
+        print(incomp_keys)
+        print('Model loaded!\   n')
+
+        net_normalizer = net.get_normalizer()  # pick normalizer from last network
+        transform = [
+            A.Normalize(mean=net_normalizer.mean, std=net_normalizer.std),
+            Ap.transforms.ToTensorV2()
+        ]
+
+        cropper = A.RandomCrop(width=128, height=128, always_apply=True, p=1.)
+        train_trans = A.Compose([cropper] + transform)
 
     if finetuning:
-        for param in net.efficientnet.parameters():
-            param.requires_grad = False
+        if 'ResNet' in net.__class__.__name__:
+            for param in net.parameters():
+                param.requires_grad = False
+            for param in net.fc.parameters():
+                param.requires_grad = True
+        else:
+            for param in net.efficientnet.parameters():
+                param.requires_grad = False
 
-    net_normalizer = net.get_normalizer()  # pick normalizer from last network
-    transform = [
-        A.Normalize(mean=net_normalizer.mean, std=net_normalizer.std),
-        Ap.transforms.ToTensorV2()
-    ]
-
-    cropper = A.RandomCrop(width=128, height=128, always_apply=True, p=1.)
-    train_trans = A.Compose([cropper] + transform)
     if optimizer_name == 'adam':
         optimizer = Adam(net.parameters(), lr=lr)
     elif optimizer_name == 'sgd':
@@ -94,7 +130,10 @@ def main():
 
     scheduler = ReduceLROnPlateau(optimizer, verbose=True)
 
-    criterion = torch.nn.CrossEntropyLoss()
+    if 'wang' in model_name:
+        criterion = torch.nn.BCEWithLogitsLoss()
+    else:
+        criterion = torch.nn.CrossEntropyLoss()
 
     test_gan_dataset = GanDataset(transform=train_trans, phase='test')
     val_gan_dataset = GanDataset(transform=train_trans, phase='val')
@@ -116,7 +155,7 @@ def main():
     # initialize lmbda with GAN
     ewc = EWC(model=net, dataloader=test_gan_dataloader, lmbda=lmbda, importance_method=importance_method)
 
-    # initial testing
+    # # initial testing
     # acc_gan, _ = test(model=net,
     #                   data_loader=test_gan_dataloader,
     #                   dataset_name='GAN',
@@ -207,7 +246,7 @@ def main():
                      ewc=ewc,
                      phase='test',
                      lr=optimizer.param_groups[0]['lr'])
-    print(f'Accuracy on SD: {acc_sd: .3f}')
+    print(f'Accuracy on SD: {acc_sd: .3f}\n\n')
 
 
 if __name__ == '__main__':

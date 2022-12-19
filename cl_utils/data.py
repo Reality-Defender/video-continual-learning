@@ -75,7 +75,10 @@ class GenericDataset(Dataset):
         path, label = self.file_list[i]
         img = np.asarray(Image.open(path))
 
-        img = self.transform(image=img)['image']
+        if 'albumentations' in self.transform.__class__.__module__:
+            img = self.transform(image=img)['image']
+        else:
+            img = self.transform(img)
 
         label = torch.tensor(label)
 
